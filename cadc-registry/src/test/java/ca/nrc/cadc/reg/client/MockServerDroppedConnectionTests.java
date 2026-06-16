@@ -213,20 +213,20 @@ extends MockServerTestBase
         }
 
         //
-        // The registry client should have called each of the bad 'resource-caps' endpoints at least twice, once to try to populate the cache,
-        // and a second time to try to get the content without using the cache.
+        // The registry client should have called each of the bad 'resource-caps' endpoints only once to populate the cache
+        // was: and a second time to try to get the content without using the cache but now this is a fatal RemoteServiceException
         // In fact MockServer will log multiple requests because the HttpGet library retries the request multiple times.
         mockServer.verify(
             request().withPath("/drop-connection-001/resource-caps"),
-            VerificationTimes.atLeast(2)
+            VerificationTimes.atLeast(1)
         );        
         mockServer.verify(
             request().withPath("/drop-connection-002/resource-caps"),
-            VerificationTimes.atLeast(2)
+            VerificationTimes.atLeast(1)
             );        
         mockServer.verify(
             request().withPath("/drop-connection-003/resource-caps"),
-            VerificationTimes.atLeast(2)
+            VerificationTimes.atLeast(1)
             );        
 
         //

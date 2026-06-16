@@ -71,6 +71,7 @@ package ca.nrc.cadc.reg.client;
 
 import ca.nrc.cadc.net.HttpGet;
 import ca.nrc.cadc.net.HttpTransfer;
+import ca.nrc.cadc.net.RemoteServiceException;
 import ca.nrc.cadc.net.TransientException;
 import ca.nrc.cadc.profiler.Profiler;
 import java.io.ByteArrayOutputStream;
@@ -80,6 +81,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.net.SocketException;
 import java.net.URL;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
@@ -111,8 +113,9 @@ public class CachingFile {
 
     // 10 minutes
     private static final int DEFAULT_EXPRIY_SECONDS = 10 * 60;
-    private int connectionTimeout = 3000; // millis
+    private int connectionTimeout = 12000; // millis
     private int readTimeout = 60000;      // millis
+    private int maxRetries = 3; // for TransientException
 
     private File localCache;
     private URL remoteSource;
@@ -162,7 +165,7 @@ public class CachingFile {
     }
 
     /**
-     * HTTP connection timeout in milliseconds (default: 30000).
+     * HTTP connection timeout in milliseconds (default: 12000).
      * 
      * @param connectionTimeout in milliseconds
      */
@@ -178,6 +181,15 @@ public class CachingFile {
     public void setReadTimeout(int readTimeout) {
         this.readTimeout = readTimeout;
     }
+
+    /**
+     * Set the max number of retries for 503 errors.
+     * 
+     * @param maxRetries maximum number of retries
+     */
+    public void setMaxRetries(int maxRetries) {
+        this.maxRetries = maxRetries;
+    }
     
     private File checkCacheDirectory(File cacheFile) {
         Profiler profiler = new Profiler(CachingFile.class);
@@ -187,15 +199,11 @@ public class CachingFile {
             log.debug("cache file parent dir: " + dir);
 
             if (dir.exists() && !dir.isDirectory()) {
-                java.nio.file.Files.delete(dir.toPath());
+                Files.delete(dir.toPath());
             }
 
             if (!dir.exists()) {
-                // The NIO version seems to create the path properly,
-                // as opposed to the dir.mkdirs()
-                // jenkinsd 2017.03.17
-                //
-                java.nio.file.Files.createDirectories(dir.toPath());
+                Files.createDirectories(dir.toPath());
                 log.debug("Created directory " + dir);
             }
             return dir;
@@ -229,7 +237,7 @@ public class CachingFile {
             FileOutputStream fos = new FileOutputStream(tmpFile);
             try {
                 loadRemoteContent(fos);
-            } catch (IOException | TransientException e) {
+            } catch (IOException e) {
                 log.warn("Failed to cache " + remoteSource + " to " + cacheDir.getAbsolutePath() + " cause: " + e.getMessage());
                 
                 log.debug("Deleting tmp cache file because download failed.");
@@ -316,19 +324,26 @@ public class CachingFile {
         return out.toString("UTF-8");
     }
 
-    private void loadRemoteContent(OutputStream dest) throws IOException, TransientException {
+    private void loadRemoteContent(OutputStream dest) throws IOException, RemoteServiceException, TransientException {
         Profiler profiler = new Profiler(CachingFile.class);
         try {
+            final long t1 = System.currentTimeMillis();
             log.debug("loadRemoteContent: " + remoteSource + " " + connectionTimeout + "/" + readTimeout);
             HttpGet download = new HttpGet(remoteSource, dest);
             download.setConnectionTimeout(connectionTimeout);
             download.setReadTimeout(readTimeout);
+            download.setMaxRetries(maxRetries);
             download.run();
+            long dt = System.currentTimeMillis() - t1;
+            log.debug("loadRemoteContent: dt=" + dt);
 
             if (download.getThrowable() != null) {
                 log.warn("Could not get source from " + remoteSource + ": " + download.getThrowable());
                 if (download.getThrowable() instanceof TransientException) {
                     throw (TransientException) download.getThrowable();
+                }
+                if (download.getThrowable() instanceof RemoteServiceException) {
+                    throw (RemoteServiceException) download.getThrowable();
                 }
                 throw new IOException(download.getThrowable());
             }

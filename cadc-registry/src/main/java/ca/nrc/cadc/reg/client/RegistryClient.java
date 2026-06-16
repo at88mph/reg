@@ -94,7 +94,10 @@ import java.nio.file.Paths;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 import org.apache.log4j.Logger;
 
 
@@ -109,13 +112,12 @@ import org.apache.log4j.Logger;
  * @author pdowler
  */
 public class RegistryClient {
-
     private static Logger log = Logger.getLogger(RegistryClient.class);
 
     private static final String HOST_PROPERTY_KEY = RegistryClient.class.getName() + ".host";
     
     private static final String CONFIG_BASE_URL_KEY = RegistryClient.class.getName() + ".baseURL";
-
+    
     public enum Query {
         APPLICATIONS("applications"),
         CAPABILITIES("resource-caps");
@@ -145,8 +147,10 @@ public class RegistryClient {
     private final List<URL> regBaseURLs = new ArrayList<URL>();
     // private String capsDomain;
     private boolean isRegOverride = false;
-    private int connectionTimeout = 30000; // millis
-    private int readTimeout = 60000;       // millis
+    private int connectionTimeout = 3000;  // millis
+    private int readTimeout = 6000;       // millis
+    private int readCapabilitiesTimeout = 5 * readTimeout; // millis
+    private int maxRetries = 1;
 
     /**
      * Default constructor, using DEFAULT_CONFIG_FILE_NAME. 
@@ -191,7 +195,7 @@ public class RegistryClient {
     }
 
     /**
-     * HTTP connection timeout in milliseconds (default: 30000).
+     * HTTP connection timeout in milliseconds (default: 3000).
      * 
      * @param connectionTimeout in milliseconds
      */
@@ -200,14 +204,24 @@ public class RegistryClient {
     }
 
     /**
-     * HTTP read timeout in milliseconds (default: 60000).
+     * HTTP read timeout in milliseconds (default: 30000).
      * 
      * @param readTimeout in milliseconds
      */
     public void setReadTimeout(int readTimeout) {
         this.readTimeout = readTimeout;
+        this.readCapabilitiesTimeout = 5 * readTimeout;
     }
-    
+
+    /**
+     * Maximum number of retries (default: 1) when encountering TransientException.
+     * 
+     * @param maxRetries maximum number of retries
+     */
+    public void setMaxRetries(int maxRetries) {
+        this.maxRetries = maxRetries;
+    }
+
     /**
      * Find out if registry lookup URL was modified by a system property. This
      * typically indicates that the code is running in a development/test environment.
@@ -247,7 +261,6 @@ public class RegistryClient {
         List<Exception> exceptions = new ArrayList<Exception>();
         
         for (URL regBaseURL : regBaseURLs) {
-            
             try {
                 log.debug("registry base URL [" + regBaseURL + "]");
                 File queryCacheFile = getQueryCacheFile(regBaseURL, queryName);
@@ -259,6 +272,7 @@ public class RegistryClient {
                 CachingFile cachedCapSource = new CachingFile(queryCacheFile, queryURL);
                 cachedCapSource.setConnectionTimeout(connectionTimeout);
                 cachedCapSource.setReadTimeout(readTimeout);
+                cachedCapSource.setMaxRetries(1);
     
                 String map = null ;
                 try {
@@ -291,9 +305,8 @@ public class RegistryClient {
                     );
                 }
                 try {
-                    return new URL(
-                        values.get(0)
-                    );
+                    URL ret = new URL(values.get(0));
+                    return ret;
                 } catch (MalformedURLException e) {
                     throw new RuntimeException(
                         "Parsing accessURL [" + values.get(0) + "] from registry [" + regBaseURL + "] threw MalformedURLException [" + e.getMessage() + "]",
@@ -335,7 +348,8 @@ public class RegistryClient {
         File capabilitiesFile = this.getCapabilitiesCacheFile(serviceCapsURL, resourceID);
         CachingFile cachedCapabilities = new CachingFile(capabilitiesFile, serviceCapsURL);
         cachedCapabilities.setConnectionTimeout(connectionTimeout);
-        cachedCapabilities.setReadTimeout(readTimeout);
+        cachedCapabilities.setReadTimeout(readCapabilitiesTimeout);
+        cachedCapabilities.setMaxRetries(1);
         String xml = cachedCapabilities.getContent();
         CapabilitiesReader capReader = new CapabilitiesReader();
         return capReader.read(xml);
