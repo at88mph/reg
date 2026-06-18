@@ -121,6 +121,9 @@ public class CachingFile {
     private URL remoteSource;
     private long expirySeconds;
     private File cacheDir;
+    
+    // response time of remote service
+    public Long responseTime = null;
 
     /**
      * Construct a caching file with the local file and
@@ -229,6 +232,7 @@ public class CachingFile {
         }
 
         // read and cache the remote source
+        long t1 = System.currentTimeMillis();
         try {
             // create a temp file in the directory
             File tmpFile = File.createTempFile(UUID.randomUUID().toString(), null, cacheDir);
@@ -250,13 +254,14 @@ public class CachingFile {
                 
                 throw e;
             } finally {
+                this.responseTime = System.currentTimeMillis() - t1;
                 try {
                     fos.close();
                 } catch (IOException e) {
                     log.warn("Failed to close output stream", e);
                 }
             }
-
+            
             // move the file to the real location
             Path source = Paths.get(tmpFile.getAbsolutePath());
             Path dest = Paths.get(localCache.getAbsolutePath());

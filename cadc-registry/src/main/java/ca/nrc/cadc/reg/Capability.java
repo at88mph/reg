@@ -112,6 +112,15 @@ public class Capability {
         return interfaces;
     }
 
+    public Interface findInterfaceByType(URI interfaceType) {
+        for (Interface i : interfaces) {
+            if (interfaceType == null || interfaceType.equals(i.getType())) {
+                return i;
+            }
+        }
+        return null;
+    }
+
     /**
      * Find a ParamHTTP interface that uses the specified securityMethod.
      * This method returns the first matching interface.
@@ -119,6 +128,7 @@ public class Capability {
      * @param securityMethod securityMethod to match
      * @return the first matching interface or null
      */
+    @Deprecated
     public Interface findInterface(final URI securityMethod) {
         return findInterface(securityMethod, Standards.INTERFACE_PARAM_HTTP);
     }
@@ -131,6 +141,7 @@ public class Capability {
      * @param interfaceType interface type to match
      * @return the first matching interface or null
      */
+    @Deprecated
     public Interface findInterface(final URI securityMethod, final URI interfaceType) {
         boolean anon = securityMethod == null || Standards.SECURITY_METHOD_ANON.equals(securityMethod);
         for (Interface intf : this.interfaces) {
@@ -155,6 +166,7 @@ public class Capability {
      * @param authMethod AuthMethod to match
      * @return the first matching interface or null
      */
+    @Deprecated
     public Interface findInterface(final AuthMethod authMethod) {
         return findInterface(authMethod, Standards.INTERFACE_PARAM_HTTP);
     }
@@ -167,6 +179,7 @@ public class Capability {
      * @param interfaceType interface type to match
      * @return the first matching interface or null
      */
+    @Deprecated
     public Interface findInterface(final AuthMethod authMethod, final URI interfaceType) {
         URI secMethod = Standards.getSecurityMethod(authMethod);
         // TODO: throw if non-null authMethod -> null securityMethod?

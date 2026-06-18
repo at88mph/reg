@@ -332,8 +332,8 @@ public class RegistryClient {
      * @param resourceID Identifies the resource.
      * @return The associated capabilities object.
      *
-     * @throws IOException If the capabilities could not be determined.
-     * @throws ca.nrc.cadc.net.ResourceNotFoundException if the resourceID cannot be found in the registry
+     * @throws IOException If the capabilities could not be read
+     * @throws ResourceNotFoundException if the resourceID cannot be found in the registry
      */
     public Capabilities getCapabilities(URI resourceID) throws IOException, ResourceNotFoundException {
         if (resourceID == null) {
@@ -356,6 +356,57 @@ public class RegistryClient {
     }
 
     /**
+     * Convenience: get the accessURL for the specified capability (standardID)
+     * of a resource with the default interface type (Standards.INTERFACE_PARAM_HTTP).
+     * 
+     * @param resourceID the resource identifier
+     * @param standardID the capability identifier
+     * @return the access URL or null if not found
+     */
+    public URL getServiceURL(URI resourceID, URI standardID) {
+        return getServiceURL(resourceID, standardID, DEFAULT_ITYPE);
+    }
+
+    /**
+     * Convenience: get the accessURL for the specified capability (standardID)
+     * of a resource.
+     * 
+     * @param resourceID the resource identifier
+     * @param standardID the capability identifier
+     * @param interfaceType the interface type identifier
+     * @return the access URL or null if not found
+     */
+    public URL getServiceURL(URI resourceID, URI standardID, URI interfaceType) {
+        if (resourceID == null || standardID == null) {
+            String msg = "No input parameters should be null";
+            throw new IllegalArgumentException(msg);
+        }
+        if (interfaceType == null) { 
+            interfaceType = DEFAULT_ITYPE;
+        }
+        
+        Capabilities caps = null;
+        try {
+            caps = getCapabilities(resourceID);
+        } catch (ResourceNotFoundException ex) {
+            log.debug("getCapabilities: " + ex);
+            return null;
+        } catch (IOException e) {
+            throw new RuntimeException("Could not obtain service URL", e);
+        }
+        
+        // locate the associated capability
+        Capability cap = caps.findCapability(standardID);
+        if (cap != null) {
+            Interface iface = cap.findInterfaceByType(interfaceType);
+            if (iface != null) {
+                return iface.getAccessURL().getURL();
+            }
+        }
+        return null;
+    }
+
+    /**
      * Find the service URL for the service registered under the specified base resource
      * identifier and using the specified authentication method. The identifier must be an
      * IVOA identifier (e.g. with URI scheme "ivo"). This method uses the default
@@ -366,7 +417,9 @@ public class RegistryClient {
      * @param standardID         IVOA standard identifier, e.g. ivo://ivo.net/std/TAP
      * @param authMethod         authentication method to be used
      * @return service URL or null if a matching interface was not found
+     * @deprecated do not need to filter by AuthMethod
      */
+    @Deprecated
     public URL getServiceURL(final URI resourceIdentifier, final URI standardID, final AuthMethod authMethod) {
         return getServiceURL(resourceIdentifier, standardID, authMethod, DEFAULT_ITYPE);
     }
@@ -384,7 +437,9 @@ public class RegistryClient {
      * @param interfaceType             Interface type indicating how to access the resource (e.g. HTTP).  See IVOA
      *                                  resource identifiers
      * @return service URL or null if a matching interface was not found
+     * @deprecated do not need to filter by AuthMethod
      */
+    @Deprecated
     public URL getServiceURL(final URI resourceID, final URI standardID, final AuthMethod authMethod, URI interfaceType) {
         if (resourceID == null || standardID == null || interfaceType == null) {
             String msg = "No input parameters should be null";
