@@ -3,7 +3,7 @@
 *******************  CANADIAN ASTRONOMY DATA CENTRE  *******************
 **************  CENTRE CANADIEN DE DONNÉES ASTRONOMIQUES  **************
 *
-*  (c) 2022.                            (c) 2022.
+*  (c) 2026.                            (c) 2026.
 *  Government of Canada                 Gouvernement du Canada
 *  National Research Council            Conseil national de recherches
 *  Ottawa, Canada, K1A 0R6              Ottawa, Canada, K1A 0R6
@@ -94,7 +94,10 @@ import java.nio.file.Paths;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 import org.apache.log4j.Logger;
 
 
@@ -109,13 +112,12 @@ import org.apache.log4j.Logger;
  * @author pdowler
  */
 public class RegistryClient {
-
     private static Logger log = Logger.getLogger(RegistryClient.class);
 
     private static final String HOST_PROPERTY_KEY = RegistryClient.class.getName() + ".host";
     
     private static final String CONFIG_BASE_URL_KEY = RegistryClient.class.getName() + ".baseURL";
-
+    
     public enum Query {
         APPLICATIONS("applications"),
         CAPABILITIES("resource-caps");
@@ -145,8 +147,10 @@ public class RegistryClient {
     private final List<URL> regBaseURLs = new ArrayList<URL>();
     // private String capsDomain;
     private boolean isRegOverride = false;
-    private int connectionTimeout = 30000; // millis
-    private int readTimeout = 60000;       // millis
+    private int connectionTimeout = 3000;  // millis
+    private int readTimeout = 6000;       // millis
+    private int readCapabilitiesTimeout = 5 * readTimeout; // millis
+    private int maxRetries = 1;
 
     /**
      * Default constructor, using DEFAULT_CONFIG_FILE_NAME. 
@@ -191,7 +195,7 @@ public class RegistryClient {
     }
 
     /**
-     * HTTP connection timeout in milliseconds (default: 30000).
+     * HTTP connection timeout in milliseconds (default: 3000).
      * 
      * @param connectionTimeout in milliseconds
      */
@@ -200,14 +204,26 @@ public class RegistryClient {
     }
 
     /**
-     * HTTP read timeout in milliseconds (default: 60000).
+     * HTTP read timeout in milliseconds (default: 6000 for canned queries).
+     * This also sets the timeout for reading capabilities documents to 5x
+     * the base timeout (default: 30000ms).
      * 
      * @param readTimeout in milliseconds
      */
     public void setReadTimeout(int readTimeout) {
         this.readTimeout = readTimeout;
+        this.readCapabilitiesTimeout = 5 * readTimeout;
     }
-    
+
+    /**
+     * Maximum number of retries (default: 1) when encountering TransientException.
+     * 
+     * @param maxRetries maximum number of retries
+     */
+    public void setMaxRetries(int maxRetries) {
+        this.maxRetries = maxRetries;
+    }
+
     /**
      * Find out if registry lookup URL was modified by a system property. This
      * typically indicates that the code is running in a development/test environment.
@@ -247,7 +263,6 @@ public class RegistryClient {
         List<Exception> exceptions = new ArrayList<Exception>();
         
         for (URL regBaseURL : regBaseURLs) {
-            
             try {
                 log.debug("registry base URL [" + regBaseURL + "]");
                 File queryCacheFile = getQueryCacheFile(regBaseURL, queryName);
@@ -259,6 +274,7 @@ public class RegistryClient {
                 CachingFile cachedCapSource = new CachingFile(queryCacheFile, queryURL);
                 cachedCapSource.setConnectionTimeout(connectionTimeout);
                 cachedCapSource.setReadTimeout(readTimeout);
+                cachedCapSource.setMaxRetries(1);
     
                 String map = null ;
                 try {
@@ -291,9 +307,8 @@ public class RegistryClient {
                     );
                 }
                 try {
-                    return new URL(
-                        values.get(0)
-                    );
+                    URL ret = new URL(values.get(0));
+                    return ret;
                 } catch (MalformedURLException e) {
                     throw new RuntimeException(
                         "Parsing accessURL [" + values.get(0) + "] from registry [" + regBaseURL + "] threw MalformedURLException [" + e.getMessage() + "]",
@@ -319,8 +334,8 @@ public class RegistryClient {
      * @param resourceID Identifies the resource.
      * @return The associated capabilities object.
      *
-     * @throws IOException If the capabilities could not be determined.
-     * @throws ca.nrc.cadc.net.ResourceNotFoundException if the resourceID cannot be found in the registry
+     * @throws IOException If the capabilities could not be read
+     * @throws ResourceNotFoundException if the resourceID cannot be found in the registry
      */
     public Capabilities getCapabilities(URI resourceID) throws IOException, ResourceNotFoundException {
         if (resourceID == null) {
@@ -335,10 +350,63 @@ public class RegistryClient {
         File capabilitiesFile = this.getCapabilitiesCacheFile(serviceCapsURL, resourceID);
         CachingFile cachedCapabilities = new CachingFile(capabilitiesFile, serviceCapsURL);
         cachedCapabilities.setConnectionTimeout(connectionTimeout);
-        cachedCapabilities.setReadTimeout(readTimeout);
+        cachedCapabilities.setReadTimeout(readCapabilitiesTimeout);
+        cachedCapabilities.setMaxRetries(1);
         String xml = cachedCapabilities.getContent();
         CapabilitiesReader capReader = new CapabilitiesReader();
         return capReader.read(xml);
+    }
+
+    /**
+     * Convenience: get the accessURL for the specified capability (standardID)
+     * of a resource with the default interface type (Standards.INTERFACE_PARAM_HTTP).
+     * 
+     * @param resourceID the resource identifier
+     * @param standardID the capability identifier
+     * @return the access URL or null if not found
+     */
+    public URL getServiceURL(URI resourceID, URI standardID) {
+        return getServiceURL(resourceID, standardID, DEFAULT_ITYPE);
+    }
+
+    /**
+     * Convenience: get the accessURL for the specified capability (standardID)
+     * of a resource. The interface type arg is optional and if null uses the
+     * default interface type (Standards.INTERFACE_PARAM_HTTP).
+     * 
+     * @param resourceID the resource identifier
+     * @param standardID the capability identifier
+     * @param interfaceType the interface type identifier or null for default type
+     * @return the access URL or null if not found
+     */
+    public URL getServiceURL(URI resourceID, URI standardID, URI interfaceType) {
+        if (resourceID == null || standardID == null) {
+            String msg = "No input parameters should be null";
+            throw new IllegalArgumentException(msg);
+        }
+        if (interfaceType == null) { 
+            interfaceType = DEFAULT_ITYPE;
+        }
+        
+        Capabilities caps = null;
+        try {
+            caps = getCapabilities(resourceID);
+        } catch (ResourceNotFoundException ex) {
+            log.debug("getCapabilities: " + ex);
+            return null;
+        } catch (IOException e) {
+            throw new RuntimeException("Could not obtain service URL", e);
+        }
+        
+        // locate the associated capability
+        Capability cap = caps.findCapability(standardID);
+        if (cap != null) {
+            Interface iface = cap.findInterfaceByType(interfaceType);
+            if (iface != null) {
+                return iface.getAccessURL().getURL();
+            }
+        }
+        return null;
     }
 
     /**
@@ -352,7 +420,9 @@ public class RegistryClient {
      * @param standardID         IVOA standard identifier, e.g. ivo://ivo.net/std/TAP
      * @param authMethod         authentication method to be used
      * @return service URL or null if a matching interface was not found
+     * @deprecated do not need to filter by AuthMethod
      */
+    @Deprecated
     public URL getServiceURL(final URI resourceIdentifier, final URI standardID, final AuthMethod authMethod) {
         return getServiceURL(resourceIdentifier, standardID, authMethod, DEFAULT_ITYPE);
     }
@@ -370,7 +440,9 @@ public class RegistryClient {
      * @param interfaceType             Interface type indicating how to access the resource (e.g. HTTP).  See IVOA
      *                                  resource identifiers
      * @return service URL or null if a matching interface was not found
+     * @deprecated do not need to filter by AuthMethod
      */
+    @Deprecated
     public URL getServiceURL(final URI resourceID, final URI standardID, final AuthMethod authMethod, URI interfaceType) {
         if (resourceID == null || standardID == null || interfaceType == null) {
             String msg = "No input parameters should be null";

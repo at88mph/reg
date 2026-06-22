@@ -23,6 +23,7 @@
 
 package ca.nrc.cadc.reg.client;
 
+import ca.nrc.cadc.auth.AuthMethod;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.fail;
@@ -51,6 +52,7 @@ import org.mockserver.model.Header;
 import org.mockserver.model.MediaType;
 
 import ca.nrc.cadc.net.HttpGet;
+import ca.nrc.cadc.reg.Standards;
 import ca.nrc.cadc.util.FileUtil;
 import ca.nrc.cadc.util.StringUtil;
 import ca.nrc.cadc.xml.XmlUtil;
@@ -215,12 +217,9 @@ public class MockServerTestBase
     protected void checkAvailibility(final URI targetIvoid, final RegistryClient registryClient )
         throws Exception {
 
+        AuthMethod am = null;
         try {
-            URL endpoint = registryClient.getServiceURL(
-                targetIvoid,
-                new URI("ivo://ivoa.net/std/VOSI#availability"),
-                null
-                );
+            URL endpoint = registryClient.getServiceURL(targetIvoid, Standards.VOSI_AVAILABILITY);
             assertNotNull("Null service endpoint",endpoint);
     
             ByteArrayOutputStream outputStream = new ByteArrayOutputStream();

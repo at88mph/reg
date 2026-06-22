@@ -3,7 +3,7 @@
 *******************  CANADIAN ASTRONOMY DATA CENTRE  *******************
 **************  CENTRE CANADIEN DE DONNÉES ASTRONOMIQUES  **************
 *
-*  (c) 2022.                            (c) 2022.
+*  (c) 2026.                            (c) 2026.
 *  Government of Canada                 Gouvernement du Canada
 *  National Research Council            Conseil national de recherches
 *  Ottawa, Canada, K1A 0R6              Ottawa, Canada, K1A 0R6
@@ -281,7 +281,12 @@ public class RegistryClientTest {
             URL serviceURL = rc.getServiceURL(resourceID, Standards.TAP_10, AuthMethod.ANON);
             Assert.assertNotNull("Service URL should not be null", serviceURL);
             Assert.assertEquals("got an incorrect URL", expected, serviceURL);
-//          Assert.assertNotNull("no caps domain", rc.getCapsDomain());
+            
+            URI itype = null;
+            URL argusURL = rc.getServiceURL(resourceID, Standards.TAP_10, itype);
+            Assert.assertNotNull("Service URL should not be null", serviceURL);
+            Assert.assertEquals("got an incorrect URL", expected, serviceURL);
+            
         } catch (Exception unexpected) {
             log.error("unexpected exception", unexpected);
             Assert.fail("unexpected exception: " + unexpected);
@@ -336,7 +341,7 @@ public class RegistryClientTest {
             URL resourceCapsURL = rc.getRegistryBaseURLs().get(0);
             Assert.assertNotNull("Service URL should not be null", resourceCapsURL);
             Assert.assertNotEquals(expected, resourceCapsURL);
-            Assert.assertEquals("wrong caps domain", "ws.cadc-ccda.hia-iha.nrc-cnrc.gc.ca", rc.getCapsDomain(resourceCapsURL));
+            Assert.assertEquals("wrong caps domain", "cadc-west-01.canfar.net", rc.getCapsDomain(resourceCapsURL));
         } catch (Exception t) {
             log.error("unexpected exception", t);
             Assert.fail("unexpected exception: " + t);
