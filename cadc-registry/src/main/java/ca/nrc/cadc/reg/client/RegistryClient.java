@@ -3,7 +3,7 @@
 *******************  CANADIAN ASTRONOMY DATA CENTRE  *******************
 **************  CENTRE CANADIEN DE DONNÉES ASTRONOMIQUES  **************
 *
-*  (c) 2022.                            (c) 2022.
+*  (c) 2026.                            (c) 2026.
 *  Government of Canada                 Gouvernement du Canada
 *  National Research Council            Conseil national de recherches
 *  Ottawa, Canada, K1A 0R6              Ottawa, Canada, K1A 0R6
@@ -204,7 +204,9 @@ public class RegistryClient {
     }
 
     /**
-     * HTTP read timeout in milliseconds (default: 30000).
+     * HTTP read timeout in milliseconds (default: 6000 for canned queries).
+     * This also sets the timeout for reading capabilities documents to 5x
+     * the base timeout (default: 30000ms).
      * 
      * @param readTimeout in milliseconds
      */
@@ -369,11 +371,12 @@ public class RegistryClient {
 
     /**
      * Convenience: get the accessURL for the specified capability (standardID)
-     * of a resource.
+     * of a resource. The interface type arg is optional and if null uses the
+     * default interface type (Standards.INTERFACE_PARAM_HTTP).
      * 
      * @param resourceID the resource identifier
      * @param standardID the capability identifier
-     * @param interfaceType the interface type identifier
+     * @param interfaceType the interface type identifier or null for default type
      * @return the access URL or null if not found
      */
     public URL getServiceURL(URI resourceID, URI standardID, URI interfaceType) {

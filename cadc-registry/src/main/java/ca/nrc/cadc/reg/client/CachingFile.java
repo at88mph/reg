@@ -3,7 +3,7 @@
 *******************  CANADIAN ASTRONOMY DATA CENTRE  *******************
 **************  CENTRE CANADIEN DE DONNÉES ASTRONOMIQUES  **************
 *
-*  (c) 2023.                            (c) 2023.
+*  (c) 2026.                            (c) 2026.
 *  Government of Canada                 Gouvernement du Canada
 *  National Research Council            Conseil national de recherches
 *  Ottawa, Canada, K1A 0R6              Ottawa, Canada, K1A 0R6
@@ -217,7 +217,16 @@ public class CachingFile {
         }
     }
 
-    public String getContent() throws IOException {
+    /**
+     * Get the content. This method normally returns the content from the local cache
+     * and occasionally refreshes the cache from the remote URL (~10 min).
+     * @return the target content from the remote URL
+     * @throws IOException if local caching fails
+     * @throws RemoteServiceException if the call to the remote URL fails
+     * @throws TransientException if the call fails with a transient exception and retries have already been attempted
+     * @see setMaxRetries
+     */
+    public String getContent() throws IOException, RemoteServiceException, TransientException {
 
         boolean cacheExists = localCache.exists() && localCache.canRead();
         if (cacheExists && !hasExpired()) {
@@ -363,5 +372,4 @@ public class CachingFile {
         long now = System.currentTimeMillis();
         return ((now - lastModified) > expiryMillis);
     }
-
 }
