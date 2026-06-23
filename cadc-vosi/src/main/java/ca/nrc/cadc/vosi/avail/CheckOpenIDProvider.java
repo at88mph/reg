@@ -3,7 +3,7 @@
 *******************  CANADIAN ASTRONOMY DATA CENTRE  *******************
 **************  CENTRE CANADIEN DE DONNÉES ASTRONOMIQUES  **************
 *
-*  (c) 2021.                            (c) 2021.
+*  (c) 2026.                            (c) 2026.
 *  Government of Canada                 Gouvernement du Canada
 *  National Research Council            Conseil national de recherches
 *  Ottawa, Canada, K1A 0R6              Ottawa, Canada, K1A 0R6
@@ -62,98 +62,51 @@
 *  <http://www.gnu.org/licenses/>.      pas le cas, consultez :
 *                                       <http://www.gnu.org/licenses/>.
 *
-*  $Revision: 4 $
-*
 ************************************************************************
- */
+*/
 
 package ca.nrc.cadc.vosi.avail;
 
-import ca.nrc.cadc.auth.SSLUtil;
-import ca.nrc.cadc.auth.X509CertificateChain;
-import ca.nrc.cadc.date.DateUtil;
-import java.io.File;
-import java.security.Principal;
-import java.security.cert.CertificateExpiredException;
-import java.security.cert.CertificateNotYetValidException;
-import java.security.cert.X509Certificate;
-import java.text.DateFormat;
-import java.util.Date;
-import java.util.Set;
-import javax.security.auth.Subject;
+import ca.nrc.cadc.net.HttpGet;
+import java.net.MalformedURLException;
+import java.net.URI;
+import java.net.URL;
 import org.apache.log4j.Logger;
 
 /**
- * @author zhangsa
  *
+ * @author pdowler
  */
-public class CheckCertificate implements CheckResource {
+public class CheckOpenIDProvider implements CheckResource {
+    private static final Logger log = Logger.getLogger(CheckOpenIDProvider.class);
 
-    private static Logger log = Logger.getLogger(CheckCertificate.class);
+    private final URI issuer;
 
-    private final File cert;
-
-    /**
-     * Check a certificate. This certificate is assumed to hold a cert and key.
-     *
-     * @param cert combined certificate + private key file
-     */
-    public CheckCertificate(File cert) {
-        this.cert = cert;
+    public CheckOpenIDProvider(URI issuer) { 
+        this.issuer = issuer;
     }
 
     @Override
-    public void check()
-            throws CheckException {
-        log.debug("read - cert: " + cert);
-        Subject s = null;
+    public void check() throws CheckException {
         try {
-            s = SSLUtil.createSubject(cert);
-        } catch (Throwable t) {
-            log.debug("test failed: " + cert);
-            // filename and reason detail are in throwable message
-            throw new CheckException("cert check failed (not found): " + t.getMessage(), t);
-        }
-
-        log.debug("check validity - cert: " + cert.getAbsolutePath() + " " + cert);
-        try {
-            Set<X509CertificateChain> certs = s.getPublicCredentials(X509CertificateChain.class);
-            if (certs.isEmpty()) {
-                // subject without certs means something went wrong above
-                throw new RuntimeException("failed to load X509 certficate from file(s): " + cert.getAbsolutePath());
+            StringBuilder sb = new StringBuilder();
+            String suri = issuer.toASCIIString();
+            sb.append(suri);
+            if (!suri.endsWith("/")) {
+                sb.append("/");
             }
-            X509CertificateChain chain = certs.iterator().next(); // the first one
-            checkValidity(chain);
-        } catch (Throwable t) {
-            log.debug("test failed: " + cert);
-            // filename and reason detail are in throwable message
-            throw new CheckException("cert check failed (invalid): " + t.getMessage());
-        }
-        log.debug("test succeeded: " + cert.getAbsolutePath() + " " + cert);
-    }
-
-    private void checkValidity(X509CertificateChain chain) {
-        DateFormat df = DateUtil.getDateFormat(DateUtil.ISO_DATE_FORMAT, DateUtil.LOCAL);
-        Date start = null;
-        Date end = null;
-        Principal principal = null;
-        for (X509Certificate c : chain.getChain()) {
-            try {
-                start = c.getNotBefore();
-                end = c.getNotAfter();
-                principal = c.getSubjectX500Principal();
-                c.checkValidity();
-            } catch (CertificateNotYetValidException exp) {
-                log.error(cert.getAbsolutePath() + " certificate is not valid yet, DN: "
-                        + principal + ", valid from " + df.format(start) + " to " + df.format(end));
-                throw new RuntimeException(cert.getAbsolutePath() + "certificate is not valid yet, DN: "
-                        + principal + ", valid from " + df.format(start) + " to " + df.format(end));
-            } catch (CertificateExpiredException exp) {
-                log.error(cert.getAbsolutePath() + "certificate has expired, DN: "
-                        + principal + ", valid from " + df.format(start) + " to " + df.format(end));
-                throw new RuntimeException(cert.getAbsolutePath() + "certificate has expired, DN: "
-                        + principal + ", valid from " + df.format(start) + " to " + df.format(end));
+            sb.append(".well-known/openid-configuration");
+            URL url = new URL(sb.toString());
+            HttpGet head = new HttpGet(url, true);
+            head.setHeadOnly(true);
+            head.run();
+            if (head.getResponseCode() != 200) {
+                throw new CheckException("configured OpenID provider " + suri 
+                    + " responded with " + head.getResponseCode()
+                    + " expected: 200");
             }
+        } catch (MalformedURLException ex) {
+            throw new CheckException("invalid OpenID issuer URI: " + ex.getMessage(), ex);
         }
     }
 }

@@ -3,7 +3,7 @@
 *******************  CANADIAN ASTRONOMY DATA CENTRE  *******************
 **************  CENTRE CANADIEN DE DONNÉES ASTRONOMIQUES  **************
 *
-*  (c) 2023.                            (c) 2023.
+*  (c) 2026.                            (c) 2026.
 *  Government of Canada                 Gouvernement du Canada
 *  National Research Council            Conseil national de recherches
 *  Ottawa, Canada, K1A 0R6              Ottawa, Canada, K1A 0R6
@@ -71,6 +71,8 @@ package ca.nrc.cadc.reg.client;
 
 import ca.nrc.cadc.net.HttpGet;
 import ca.nrc.cadc.net.HttpTransfer;
+import ca.nrc.cadc.net.RemoteServiceException;
+import ca.nrc.cadc.net.TransientException;
 import ca.nrc.cadc.profiler.Profiler;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -79,6 +81,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.net.SocketException;
 import java.net.URL;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
@@ -110,13 +113,17 @@ public class CachingFile {
 
     // 10 minutes
     private static final int DEFAULT_EXPRIY_SECONDS = 10 * 60;
-    private int connectionTimeout = 3000; // millis
+    private int connectionTimeout = 12000; // millis
     private int readTimeout = 60000;      // millis
+    private int maxRetries = 3; // for TransientException
 
     private File localCache;
     private URL remoteSource;
     private long expirySeconds;
     private File cacheDir;
+    
+    // response time of remote service
+    public Long responseTime = null;
 
     /**
      * Construct a caching file with the local file and
@@ -161,7 +168,7 @@ public class CachingFile {
     }
 
     /**
-     * HTTP connection timeout in milliseconds (default: 30000).
+     * HTTP connection timeout in milliseconds (default: 12000).
      * 
      * @param connectionTimeout in milliseconds
      */
@@ -177,6 +184,15 @@ public class CachingFile {
     public void setReadTimeout(int readTimeout) {
         this.readTimeout = readTimeout;
     }
+
+    /**
+     * Set the max number of retries for 503 errors.
+     * 
+     * @param maxRetries maximum number of retries
+     */
+    public void setMaxRetries(int maxRetries) {
+        this.maxRetries = maxRetries;
+    }
     
     private File checkCacheDirectory(File cacheFile) {
         Profiler profiler = new Profiler(CachingFile.class);
@@ -186,15 +202,11 @@ public class CachingFile {
             log.debug("cache file parent dir: " + dir);
 
             if (dir.exists() && !dir.isDirectory()) {
-                java.nio.file.Files.delete(dir.toPath());
+                Files.delete(dir.toPath());
             }
 
             if (!dir.exists()) {
-                // The NIO version seems to create the path properly,
-                // as opposed to the dir.mkdirs()
-                // jenkinsd 2017.03.17
-                //
-                java.nio.file.Files.createDirectories(dir.toPath());
+                Files.createDirectories(dir.toPath());
                 log.debug("Created directory " + dir);
             }
             return dir;
@@ -205,7 +217,16 @@ public class CachingFile {
         }
     }
 
-    public String getContent() throws IOException {
+    /**
+     * Get the content. This method normally returns the content from the local cache
+     * and occasionally refreshes the cache from the remote URL (~10 min).
+     * @return the target content from the remote URL
+     * @throws IOException if local caching fails
+     * @throws RemoteServiceException if the call to the remote URL fails
+     * @throws TransientException if the call fails with a transient exception and retries have already been attempted
+     * @see setMaxRetries
+     */
+    public String getContent() throws IOException, RemoteServiceException, TransientException {
 
         boolean cacheExists = localCache.exists() && localCache.canRead();
         if (cacheExists && !hasExpired()) {
@@ -219,7 +240,8 @@ public class CachingFile {
             }
         }
 
-        // read the capabilities from the web service
+        // read and cache the remote source
+        long t1 = System.currentTimeMillis();
         try {
             // create a temp file in the directory
             File tmpFile = File.createTempFile(UUID.randomUUID().toString(), null, cacheDir);
@@ -229,17 +251,26 @@ public class CachingFile {
             try {
                 loadRemoteContent(fos);
             } catch (IOException e) {
-                log.warn("Deleting tmp cache file because download failed.");
+                log.warn("Failed to cache " + remoteSource + " to " + cacheDir.getAbsolutePath() + " cause: " + e.getMessage());
+                
+                log.debug("Deleting tmp cache file because download failed.");
                 tmpFile.delete();
+                
+                if (cacheExists) {
+                    log.warn("Returning expired cached capabilities.");
+                    return readCache();
+                }
+                
                 throw e;
             } finally {
+                this.responseTime = System.currentTimeMillis() - t1;
                 try {
                     fos.close();
-                } catch (Exception e) {
+                } catch (IOException e) {
                     log.warn("Failed to close output stream", e);
                 }
             }
-
+            
             // move the file to the real location
             Path source = Paths.get(tmpFile.getAbsolutePath());
             Path dest = Paths.get(localCache.getAbsolutePath());
@@ -254,10 +285,9 @@ public class CachingFile {
             }
 
             return readCache();
-        } catch (Exception e) {
-            log.warn("Failed to cache capabilities to file: " + localCache, e);
-            // for any error return the cached copy if available, otherwise return
-            // the capabilities from source
+        
+        } catch (IOException e) {
+            // failure: cache in local filesystem
             if (cacheExists) {
                 log.warn("Returning expired cached capabilities.");
                 return readCache();
@@ -308,16 +338,27 @@ public class CachingFile {
         return out.toString("UTF-8");
     }
 
-    private void loadRemoteContent(OutputStream dest) throws IOException {
+    private void loadRemoteContent(OutputStream dest) throws IOException, RemoteServiceException, TransientException {
         Profiler profiler = new Profiler(CachingFile.class);
         try {
+            final long t1 = System.currentTimeMillis();
+            log.debug("loadRemoteContent: " + remoteSource + " " + connectionTimeout + "/" + readTimeout);
             HttpGet download = new HttpGet(remoteSource, dest);
             download.setConnectionTimeout(connectionTimeout);
             download.setReadTimeout(readTimeout);
+            download.setMaxRetries(maxRetries);
             download.run();
+            long dt = System.currentTimeMillis() - t1;
+            log.debug("loadRemoteContent: dt=" + dt);
 
             if (download.getThrowable() != null) {
                 log.warn("Could not get source from " + remoteSource + ": " + download.getThrowable());
+                if (download.getThrowable() instanceof TransientException) {
+                    throw (TransientException) download.getThrowable();
+                }
+                if (download.getThrowable() instanceof RemoteServiceException) {
+                    throw (RemoteServiceException) download.getThrowable();
+                }
                 throw new IOException(download.getThrowable());
             }
         } finally {
@@ -331,5 +372,4 @@ public class CachingFile {
         long now = System.currentTimeMillis();
         return ((now - lastModified) > expiryMillis);
     }
-
 }
