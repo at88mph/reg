@@ -15,19 +15,26 @@ image:
 
 # -- Begin application specific parameters. --
 application:
-  # Mandatory service entries to point to specific URLs.  Keys are IVOA identifiers.
+  # Required VOSI-enabled API (web service) entries. Rendered into reg-resource-caps.properties.
+  # See: https://github.com/opencadc/reg/tree/main/reg#reg-resource-capsproperties-optional
   # Example:
   #  - id: "ivo://cadc.nrc.ca/service/mycustomentry"
-  #    url: "https://example.com/mylink"
+  #    url: "https://example.com/mylink/capabilities"
   serviceEntries: []
 
-  # Optional OAI publishing; when enabled, authority is required (IVOA identifier URI).
-  oaiPublishing:
-    enabled: false
-    # Required when enabled is true.
-    # Example:
-    #   authority: "ivo://cadc.nrc.ca/reg"
-    authority: ""
+  # Optional web application (user interface) entries. Rendered into reg-applications.properties.
+  # See: https://github.com/opencadc/reg/tree/main/reg#reg-applicationsproperites-optional-experimental
+  # Example:
+  #  - id: "ivo://cadc.nrc.ca/ui/mycustomentry"
+  #    url: "https://example.com/mylink"
+  applicationEntries: []
+
+  # Optional IVOA authority for OAI publishing (reg.properties).
+  # When set, org.opencadc.reg.authority is written to the reg.properties ConfigMap entry.
+  # See: https://github.com/opencadc/reg/tree/main/reg#regproperties-optional
+  # Example:
+  #   authority: "ivo://cadc.nrc.ca/reg"
+  authority: ""
 
   vosi:
     # The distinguished names of users that are allowed to control VOSI functions, namely POSTing to /availability to make the application read-only.
@@ -61,12 +68,6 @@ application:
     #  - "ivo://cadc.nrc.ca/gms/auditgroup"
     #  - "ivo://cadc.nrc.ca/gms/anotherauditgroup"
     # groups: []
-
-  # (Optional) Add User Interface custom entries to point to specific URLs.  Keys are IVOA identifiers.
-  # Example:
-  #  - id: "ivo://cadc.nrc.ca/ui/mycustomentry"
-  #    url: "https://example.com/mylink"
-  # userInterfaceEntries: []
 
 # -- End application specific parameters. --
 
