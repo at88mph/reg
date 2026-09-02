@@ -15,13 +15,9 @@ data:
     tomcat.connector.scheme={{ $conn.scheme }}
     tomcat.connector.proxyName={{ $conn.proxyName }}
     tomcat.connector.proxyPort={{ $conn.proxyPort }}
+    tomcat.connector.secure={{ $conn.secure }}
 {{- end }}
     ca.nrc.cadc.util.Log4jInit.messageOnly=true
-
-  reg.properties: |
-{{- with .Values.application.authority }}
-    org.opencadc.reg.authority = {{ . }}
-{{- end }}
 
   reg-resource-caps.properties:
 {{ with .Values.application.serviceEntries }}
@@ -54,15 +50,4 @@ data:
     group = {{ $element }}
     {{- end }}
 {{ end }}
-{{ end }}
-{{ with .Values.application.vosi }}
-  cadc-vosi.properties:
-  {{- with .adminUserDistinguishedNames }}
-    {{- range $index, $element := . }}
-    user = {{ $element }}
-    {{- end }}
-  {{- end }}
-    {{- if .startupMode }}
-    startupMode = {{ .startupMode }}
-    {{- end }}
 {{ end }}

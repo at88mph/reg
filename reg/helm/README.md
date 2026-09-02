@@ -39,16 +39,12 @@ The chart renders a ConfigMap mounted at `/config` in the container. That produc
 |---------------|---------|
 | `catalina.properties` | Tomcat and proxy settings (`tomcat.connector.*`) |
 | `reg-resource-caps.properties` | VOSI-enabled API entries (from `application.serviceEntries`) |
-| `reg.properties` | OAI publishing authority (when `application.authority` is set) |
 | `reg-applications.properties` | Web application entries (from `application.applicationEntries`, optional) |
 | `cadc-log.properties` | Dynamic logging control (optional) |
-| `cadc-vosi.properties` | VOSI availability admin and startup mode (optional) |
 
 ### Application settings (`application.*`)
 
 - **`application.serviceEntries`** (required): list of `{ id, url }` pairs for VOSI-enabled APIs (web services). Rendered into `reg-resource-caps.properties` ([reg-resource-caps.properties](https://github.com/opencadc/reg/tree/main/reg#reg-resource-capsproperties-optional)).
-- **`application.authority`**: optional IVOA authority for OAI publishing ([reg.properties](https://github.com/opencadc/reg/tree/main/reg#regproperties-optional)).
-- **`application.vosi`**: VOSI admin users and startup mode (`Offline`, `ReadOnly`, `ReadWrite`).
 - **`application.logging`**: users, groups, or DNs granted enhanced logging.
 - **`application.applicationEntries`**: optional web application (user interface) feature ID to URL mappings ([reg-applications.properties](https://github.com/opencadc/reg/tree/main/reg#reg-applicationsproperites-optional-experimental)).
 
@@ -83,9 +79,7 @@ When ingress or HTTPRoute is enabled and `tomcat.connector` fields are left empt
 | affinity | object | `{}` |  |
 | application.logging | string | `nil` |  |
 | application.applicationEntries | list | `[]` | Web application (user interface) entries ([reg-applications.properties](https://github.com/opencadc/reg/tree/main/reg#reg-applicationsproperites-optional-experimental)) |
-| application.authority | string | `""` | IVOA authority for OAI publishing ([reg.properties](https://github.com/opencadc/reg/tree/main/reg#regproperties-optional)) |
 | application.serviceEntries | list | `[]` | VOSI-enabled API (web service) entries ([reg-resource-caps.properties](https://github.com/opencadc/reg/tree/main/reg#reg-resource-capsproperties-optional)) |
-| application.vosi | string | `nil` |  |
 | autoscaling.enabled | bool | `false` |  |
 | autoscaling.maxReplicas | int | `100` |  |
 | autoscaling.minReplicas | int | `1` |  |

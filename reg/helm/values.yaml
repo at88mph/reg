@@ -29,26 +29,6 @@ application:
   #    url: "https://example.com/mylink"
   applicationEntries: []
 
-  # Optional IVOA authority for OAI publishing (reg.properties).
-  # When set, org.opencadc.reg.authority is written to the reg.properties ConfigMap entry.
-  # See: https://github.com/opencadc/reg/tree/main/reg#regproperties-optional
-  # Example:
-  #   authority: "ivo://cadc.nrc.ca/reg"
-  authority: ""
-
-  vosi:
-    # The distinguished names of users that are allowed to control VOSI functions, namely POSTing to /availability to make the application read-only.
-    # Example:
-    #  adminUserDistinguishedNames:
-    #    - "CN=Admin User,OU=CADC,O=CADC,C=CA"
-    #    - "CN=Another Admin,OU=CADC,O=CADC,C=CA"
-    # adminUserDistinguishedNames: []
-
-    # optional mode at startup: Offline, ReadOnly, ReadWrite (default)
-    # Example:
-    #  startupMode: ReadOnly
-    # startupMode:
-
   # Optionally configure log level administration for specific users or groups.
   logging:
     # List of distinguished names that should have enhanced logging.
@@ -193,6 +173,8 @@ tomcat:
     proxyName: ""
     # Public URL port. Auto-derived as 443 (https) or 80 (http).
     proxyPort: ""
+    # Public URL secure. Auto-derived as true (https) or false (http).
+    secure: false
 
 resources: {}
   # We usually recommend not to specify default resources and to leave this as a conscious
